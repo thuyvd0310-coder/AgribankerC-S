@@ -1,5 +1,3 @@
-# python.py
-
 import streamlit as st
 import pandas as pd
 from google import genai
@@ -53,7 +51,7 @@ def process_financial_data(df):
     
     return df
 
-# --- Hàm gọi API Gemini ---
+# --- Hàm gọi API Gemini cho phân tích Báo cáo Tài chính ---
 def get_ai_analysis(data_for_ai, api_key):
     """Gửi dữ liệu phân tích đến Gemini API và nhận nhận xét."""
     try:
@@ -80,6 +78,56 @@ def get_ai_analysis(data_for_ai, api_key):
     except Exception as e:
         return f"Đã xảy ra lỗi không xác định: {e}"
 
+# ******************************* PHẦN BỔ SUNG CHAT GEMINI BẮT ĐẦU *******************************
+
+# --- Thiết lập Sidebar Chat ---
+with st.sidebar:
+    st.subheader("Trò chuyện với Gemini 💬")
+    st.info("Sử dụng Gemini để hỏi thêm về các thuật ngữ tài chính hoặc kiến thức chung.")
+    
+    # 1. Khởi tạo session state cho lịch sử chat
+    if "messages" not in st.session_state:
+        st.session_state["messages"] = []
+    
+    # 2. Khởi tạo Chat Session (duy trì ngữ cảnh)
+    try:
+        api_key = st.secrets.get("GEMINI_API_KEY")
+        if not api_key:
+            st.error("Không tìm thấy Khóa API. Vui lòng cấu hình 'GEMINI_API_KEY'.")
+        else:
+            client = genai.Client(api_key=api_key)
+            # Khởi tạo Chat Session nếu chưa có
+            if "chat_session" not in st.session_state:
+                st.session_state["chat_session"] = client.chats.create(
+                    model='gemini-2.5-flash',
+                    system_instruction="Bạn là một chuyên gia tài chính và AI trợ giúp, hãy trả lời các câu hỏi một cách chính xác và chuyên nghiệp bằng Tiếng Việt."
+                )
+            
+            # 3. Hiển thị lịch sử chat
+            for message in st.session_state.messages:
+                with st.chat_message(message["role"]):
+                    st.markdown(message["content"])
+
+            # 4. Input cho người dùng
+            if prompt := st.chat_input("Hỏi Gemini một câu hỏi..."):
+                # Thêm tin nhắn người dùng vào lịch sử và hiển thị
+                st.session_state.messages.append({"role": "user", "content": prompt})
+                with st.chat_message("user"):
+                    st.markdown(prompt)
+
+                # Gửi câu hỏi đến Gemini và hiển thị phản hồi
+                with st.chat_message("assistant"):
+                    with st.spinner("Đang gửi và chờ câu trả lời..."):
+                        response = st.session_state["chat_session"].send_message(prompt)
+                        st.markdown(response.text)
+                
+                # Thêm phản hồi của AI vào lịch sử
+                st.session_state.messages.append({"role": "assistant", "content": response.text})
+
+    except Exception as e:
+        st.warning(f"Không thể kết nối với Gemini Chat. Chi tiết lỗi: {e}")
+
+# ******************************* PHẦN BỔ SUNG CHAT GEMINI KẾT THÚC *******************************
 
 # --- Chức năng 1: Tải File ---
 uploaded_file = st.file_uploader(
@@ -125,20 +173,20 @@ if uploaded_file is not None:
                 no_ngan_han_N_1 = df_processed[df_processed['Chỉ tiêu'].str.contains('NỢ NGẮN HẠN', case=False, na=False)]['Năm trước'].iloc[0]
 
                 # Tính toán
-                thanh_toan_hien_hanh_N = tsnh_n / no_ngan_han_N
-                thanh_toan_hien_hanh_N_1 = tsnh_n_1 / no_ngan_han_N_1
+                thanh_toan_hien_hanh_N = tsnh_n / no_ngan_han_N if no_ngan_han_N != 0 else float('inf')
+                thanh_toan_hien_hanh_N_1 = tsnh_n_1 / no_ngan_han_N_1 if no_ngan_han_N_1 != 0 else float('inf')
                 
                 col1, col2 = st.columns(2)
                 with col1:
                     st.metric(
                         label="Chỉ số Thanh toán Hiện hành (Năm trước)",
-                        value=f"{thanh_toan_hien_hanh_N_1:.2f} lần"
+                        value=f"{thanh_toan_hien_hanh_N_1:.2f} lần" if thanh_toan_hien_hanh_N_1 != float('inf') else "Không xác định"
                     )
                 with col2:
                     st.metric(
                         label="Chỉ số Thanh toán Hiện hành (Năm sau)",
-                        value=f"{thanh_toan_hien_hanh_N:.2f} lần",
-                        delta=f"{thanh_toan_hien_hanh_N - thanh_toan_hien_hanh_N_1:.2f}"
+                        value=f"{thanh_toan_hien_hanh_N:.2f} lần" if thanh_toan_hien_hanh_N != float('inf') else "Không xác định",
+                        delta=f"{thanh_toan_hien_hanh_N - thanh_toan_hien_hanh_N_1:.2f}" if thanh_toan_hien_hanh_N != float('inf') and thanh_toan_hien_hanh_N_1 != float('inf') else None
                     )
                     
             except IndexError:
@@ -159,18 +207,18 @@ if uploaded_file is not None:
                 ],
                 'Giá trị': [
                     df_processed.to_markdown(index=False),
-                    f"{df_processed[df_processed['Chỉ tiêu'].str.contains('TÀI SẢN NGẮN HẠN', case=False, na=False)]['Tốc độ tăng trưởng (%)'].iloc[0]:.2f}%", 
+                    f"{df_processed[df_processed['Chỉ tiêu'].str.contains('TÀI SẢN NGẮN HẠN', case=False, na=False)]['Tốc độ tăng trưởng (%)'].iloc[0]:.2f}%" if not df_processed[df_processed['Chỉ tiêu'].str.contains('TÀI SẢN NGẮN HẠN', case=False, na=False)].empty else "N/A", 
                     f"{thanh_toan_hien_hanh_N_1}", 
                     f"{thanh_toan_hien_hanh_N}"
                 ]
             }).to_markdown(index=False) 
 
             if st.button("Yêu cầu AI Phân tích"):
-                api_key = st.secrets.get("GEMINI_API_KEY") 
+                api_key_analysis = st.secrets.get("GEMINI_API_KEY") 
                 
-                if api_key:
+                if api_key_analysis:
                     with st.spinner('Đang gửi dữ liệu và chờ Gemini phân tích...'):
-                        ai_result = get_ai_analysis(data_for_ai, api_key)
+                        ai_result = get_ai_analysis(data_for_ai, api_key_analysis)
                         st.markdown("**Kết quả Phân tích từ Gemini AI:**")
                         st.info(ai_result)
                 else:
