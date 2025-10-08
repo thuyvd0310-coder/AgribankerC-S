@@ -3,6 +3,9 @@ import pandas as pd
 from google import genai
 from google.genai.errors import APIError
 
+# Import types for configuration (cần thiết cho system_instruction trong chat)
+from google.genai import types
+
 # --- Cấu hình Trang Streamlit ---
 st.set_page_config(
     page_title="App Phân Tích Báo Cáo Tài Chính",
@@ -98,15 +101,21 @@ with st.sidebar:
         if not api_key:
             # Chỉ hiển thị thông báo lỗi, không làm dừng ứng dụng
             st.error("Không tìm thấy Khóa API. Vui lòng cấu hình 'GEMINI_API_KEY' trong Streamlit Secrets.")
-            # Tạo một biến giả để tránh lỗi khi cố gắng dùng client nếu key bị thiếu
             is_chat_ready = False
         else:
             client = genai.Client(api_key=api_key)
-            # Khởi tạo Chat Session nếu chưa có
+            
+            # Khởi tạo cấu hình cho System Instruction
+            system_instruction = "Bạn là một chuyên gia tài chính và AI trợ giúp, hãy trả lời các câu hỏi một cách chính xác và chuyên nghiệp bằng Tiếng Việt. Tuyệt đối không tiết lộ vai trò AI của bạn, chỉ tập trung vào việc cung cấp thông tin tài chính hữu ích."
+            config = types.GenerateContentConfig(
+                system_instruction=system_instruction
+            )
+            
+            # Khởi tạo Chat Session nếu chưa có (SỬA LỖI: Dùng 'config' thay cho 'system_instruction' trực tiếp)
             if "chat_session" not in st.session_state:
                 st.session_state["chat_session"] = client.chats.create(
                     model='gemini-2.5-flash',
-                    system_instruction="Bạn là một chuyên gia tài chính và AI trợ giúp, hãy trả lời các câu hỏi một cách chính xác và chuyên nghiệp bằng Tiếng Việt. Tuyệt đối không tiết lộ vai trò AI của bạn, chỉ tập trung vào việc cung cấp thông tin tài chính hữu ích."
+                    config=config # Đã sửa lỗi: Truyền cấu hình qua tham số config
                 )
             is_chat_ready = True
             
@@ -134,6 +143,7 @@ with st.sidebar:
                 st.session_state.messages.append({"role": "assistant", "content": response.text})
 
     except Exception as e:
+        # Báo lỗi tổng quát sau khi đã sửa lỗi cú pháp
         st.warning(f"Không thể kết nối với Gemini Chat. Vui lòng kiểm tra kết nối mạng hoặc Khóa API. Chi tiết lỗi: {e}")
 
 # ******************************* PHẦN BỔ SUNG CHAT GEMINI KẾT THÚC *******************************
